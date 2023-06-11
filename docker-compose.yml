@@ -8,8 +8,8 @@ services:
     volumes:
       - /usr/src/app/downloads:/usr/src/app/downloads:rw # optional
     ports:
-      - "8090:8090" # qbittorrent selection webserver
-      - "8081:8081" # rclone serve index webserver
+      - "80:80" # qbittorrent selection webserver
+      - "8080:8080" # rclone serve index webserver
     restart: on-failure
       
       
