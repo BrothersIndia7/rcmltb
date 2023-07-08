@@ -1,4 +1,4 @@
-__version__ = "4.5"
+__version__ = "4.6"
 __author__ = "Sam-Max"
 
 from uvloop import install
@@ -6,8 +6,9 @@ from asyncio import Lock
 from asyncio import Queue
 from socket import setdefaulttimeout
 from logging import getLogger, FileHandler, StreamHandler, INFO, basicConfig
-from os import environ, remove as osremove, path as ospath
+from os import environ, getcwd, remove as osremove, path as ospath
 from threading import Thread
+from faulthandler import enable as faulthandler_enable
 from time import sleep, time
 from sys import exit
 from dotenv import load_dotenv, dotenv_values
@@ -15,11 +16,12 @@ from pymongo import MongoClient
 from aria2p import API as ariaAPI, Client as ariaClient
 from qbittorrentapi import Client as qbitClient
 from subprocess import Popen, run as srun
-from pyrogram import Client
+from pyrogram import Client as tgClient
 from bot.conv_pyrogram import Conversation
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from tzlocal import get_localzone
 
+faulthandler_enable()
 
 install()
 
@@ -27,7 +29,7 @@ setdefaulttimeout(600)
 
 botUptime = time()
 
-basicConfig(level= INFO,
+basicConfig(level=INFO,
     format= '%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[StreamHandler(), FileHandler("botlog.txt")])
 
@@ -42,6 +44,7 @@ QbTorrents = {}
 qb_listener_lock = Lock()
 user_data = {}
 leech_log = []
+tmdb_titles= {}
 remotes_multi= []
 aria2_options = {}
 qbit_options = {}
@@ -313,11 +316,11 @@ BOT_PM = BOT_PM.lower() == 'true'
 
 IS_PREMIUM_USER = False
 USER_SESSION_STRING = environ.get('USER_SESSION_STRING', '')
-app= None
+app= ''
 if len(USER_SESSION_STRING) != 0:
     LOGGER.info("Creating Pyrogram client from USER_SESSION_STRING")
-    app = Client("pyrogram_session", api_id=TELEGRAM_API_ID, api_hash=TELEGRAM_API_HASH, session_string=USER_SESSION_STRING, 
-                 no_updates=True, max_concurrent_transmissions=1000).start()
+    app = tgClient("pyrogram_session", api_id=TELEGRAM_API_ID, api_hash=TELEGRAM_API_HASH, session_string=USER_SESSION_STRING,
+                 max_concurrent_transmissions=1000).start()
     IS_PREMIUM_USER = app.me.is_premium
 
 TG_MAX_FILE_SIZE= 4194304000 if IS_PREMIUM_USER else 2097152000
@@ -388,9 +391,9 @@ config_dict = { 'AS_DOCUMENT': AS_DOCUMENT,
                 'YT_DLP_OPTIONS': YT_DLP_OPTIONS}
 
 if QB_BASE_URL:
-    Popen(f"gunicorn qbitweb.wserver:app --bind 0.0.0.0:{QB_SERVER_PORT}", shell=True)
+    Popen(f"gunicorn qbitweb.wserver:app --bind 0.0.0.0:{QB_SERVER_PORT} --worker-class gevent", shell=True)
 
-srun(["qbittorrent-nox", "-d", "--profile=."])
+srun(["qbittorrent-nox", "-d", f"--profile={getcwd()}"])
 
 if not ospath.exists('.netrc'):
      with open('.netrc', 'w'):
@@ -457,7 +460,7 @@ else:
     qb_client.app_set_preferences(qb_opt)
 
 LOGGER.info("Creating Pyrogram client")
-bot = Client("pyrogram", api_id=TELEGRAM_API_ID, api_hash=TELEGRAM_API_HASH, bot_token=BOT_TOKEN, 
+bot = tgClient("pyrogram", api_id=TELEGRAM_API_ID, api_hash=TELEGRAM_API_HASH, bot_token=BOT_TOKEN, 
              workers=1000, max_concurrent_transmissions=1000)
 Conversation(bot) 
 bot.start()

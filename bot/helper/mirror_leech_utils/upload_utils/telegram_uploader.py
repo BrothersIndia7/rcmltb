@@ -3,7 +3,7 @@ from os import walk, rename as osrename, path as ospath, remove as osremove
 from time import time
 from re import match as re_match
 from PIL import Image
-from bot import GLOBAL_EXTENSION_FILTER, IS_PREMIUM_USER, LOGGER, config_dict, bot, app, user_data, leech_log
+from bot import GLOBAL_EXTENSION_FILTER, IS_PREMIUM_USER, LOGGER, PARALLEL_TASKS, config_dict, bot, app, user_data, l_queue, leech_log
 from pyrogram.errors import FloodWait, RPCError
 from bot.helper.ext_utils.bot_utils import clean_unwanted, is_archive
 from bot.helper.ext_utils.human_format import get_readable_file_size
@@ -28,19 +28,27 @@ class TelegramUploader():
         self.__start_time= time()
         self.__processed_bytes = 0
         self._last_uploaded = 0
+        self._iteration = 0
         self.__user_id = listener.message.from_user.id
-        self.client= app if app is not None else bot 
+        self.client= app if app else bot 
         self.__upload_path= ''
         self.__sent_msg= None
 
     async def upload(self):
-        self.__set__user_settings()
-        if IS_PREMIUM_USER and not self.__listener.isSuperGroup:
-            await self.__listener.onUploadError('Use SuperGroup to leech with User!')
+        res = await self.__msg_to_reply()
+        if not res:
             return
-        self.__sent_msg = await bot.get_messages(self.__listener.message.chat.id, self.__listener.uid)
+        self.__user_settings()
         if ospath.isdir(self.__path):
             for dirpath, _, filenames in sorted(walk(self.__path)):
+                if self._iteration != 0:
+                    folder_name = ospath.basename(dirpath)
+                    if config_dict['LEECH_LOG']:
+                         for chat in leech_log:
+                            await self.client.send_message(text= f"<b>📂 Folder: </b> {folder_name}", chat_id=chat)
+                    else:
+                        await self.client.send_message(text= f"<b>📂 Folder: </b> {folder_name}", chat_id= self.__sent_msg.chat.id)
+                self._iteration += 1  
                 for file in sorted(filenames):
                     self.__upload_path = ospath.join(dirpath, file)
                     if file.lower().endswith(tuple(GLOBAL_EXTENSION_FILTER)):
@@ -107,7 +115,7 @@ class TelegramUploader():
                             progress=self.__upload_progress)
                         if config_dict['BOT_PM']:
                             try:
-                                await bot.copy_message(
+                                await self.client.copy_message(
                                     chat_id= self.__user_id, 
                                     from_chat_id= self.__sent_msg.chat.id, 
                                     message_id= self.__sent_msg.id)
@@ -152,7 +160,7 @@ class TelegramUploader():
                             progress=self.__upload_progress)
                         if config_dict['BOT_PM']:
                             try:
-                                await bot.copy_message(
+                                await self.client.copy_message(
                                     chat_id= self.__user_id, 
                                     from_chat_id= self.__sent_msg.chat.id, 
                                     message_id= self.__sent_msg.id)
@@ -186,7 +194,7 @@ class TelegramUploader():
                             progress=self.__upload_progress)
                         if config_dict['BOT_PM']:
                             try:
-                                await bot.copy_message(
+                                await self.client.copy_message(
                                     chat_id= self.__user_id, 
                                     from_chat_id= self.__sent_msg.chat.id, 
                                     message_id= self.__sent_msg.id)
@@ -216,7 +224,7 @@ class TelegramUploader():
                             progress=self.__upload_progress)
                         if config_dict['BOT_PM']:
                             try:
-                                await bot.copy_message(
+                                await self.client.copy_message(
                                     chat_id= self.__user_id, 
                                     from_chat_id= self.__sent_msg.chat.id, 
                                     message_id= self.__sent_msg.id)
@@ -249,7 +257,18 @@ class TelegramUploader():
         self._last_uploaded = current
         self.__processed_bytes += chunk_size
 
-    def __set__user_settings(self):
+    async def __msg_to_reply(self):
+        if IS_PREMIUM_USER:
+            if not self.__listener.isSuperGroup:
+                await self.__listener.onUploadError('Use supergroup to leech with user_session_string')
+                return False
+            self.__sent_msg = await app.get_messages(chat_id=self.__listener.message.chat.id,
+                                                      message_ids=self.__listener.uid)
+        else:
+            self.__sent_msg = self.__listener.message
+        return True
+    
+    def __user_settings(self):
         user_id = self.__listener.message.from_user.id
         user_dict = user_data.get(user_id, {})
         self.__as_doc = user_dict.get('as_doc') or config_dict['AS_DOCUMENT']

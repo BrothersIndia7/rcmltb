@@ -1,4 +1,5 @@
-from bot import OWNER_ID, bot, config_dict, remotes_multi
+from bot import LOGGER, OWNER_ID, bot, config_dict, remotes_multi
+from bot.helper.ext_utils.bot_utils import run_sync
 from bot.helper.telegram_helper.bot_commands import BotCommands
 from bot.helper.telegram_helper.filters import CustomFilters
 from pyrogram.handlers import CallbackQueryHandler, MessageHandler
@@ -25,8 +26,7 @@ async def handle_mirrorselect(_, message):
         else:
             await sendMessage("Not allowed to use", message)        
 
-async def mirrorsel_callback(_, callback_query):
-    query= callback_query
+async def mirrorselect_callback(_, query):
     data = query.data
     cmd = data.split("^")
     message = query.message
@@ -38,15 +38,16 @@ async def mirrorsel_callback(_, callback_query):
         await query.answer("This menu is not for you!", show_alert=True)
         return
     if cmd[1] == "remote":
-        if config_dict['MULTI_REMOTE_UP'] and user_id== OWNER_ID:
-            remotes_multi.append(cmd[2])
-            await list_remotes(message, menu_type= Menus.MIRROR_SELECT, edit=True)
-            return
+        is_crypt= False if cmd[-2] == "False" else True
+        if CustomFilters._owner_query(user_id):
+            if config_dict['MULTI_REMOTE_UP']:
+                remotes_multi.append(cmd[2])
+                await list_remotes(message, menu_type= Menus.MIRROR_SELECT, edit=True)
+                return
+            config_dict.update({'DEFAULT_OWNER_REMOTE': cmd[2]}) 
         update_rclone_data("MIRROR_SELECT_BASE_DIR", "", user_id) 
         update_rclone_data("MIRROR_SELECT_REMOTE", cmd[2], user_id)
-        if user_id == OWNER_ID:
-            config_dict.update({'DEFAULT_OWNER_REMOTE': cmd[2]}) 
-        await list_folder(message, cmd[2], "", menu_type=Menus.MIRROR_SELECT, edit=True)
+        await list_folder(message, cmd[2], "", menu_type=Menus.MIRROR_SELECT, is_crypt=is_crypt, edit=True)
     elif cmd[1] == "remote_dir":
         path = get_rclone_data(cmd[2], user_id)
         base_dir += path + "/"
@@ -74,25 +75,27 @@ async def mirrorsel_callback(_, callback_query):
         await query.answer()
         await message.delete()
 
-async def next_page_mirrorsel(_, callback_query):
+async def next_page_mirrorselect(_, callback_query):
     query= callback_query
     data= query.data
     message= query.message
     await query.answer()
     user_id= message.reply_to_message.from_user.id
     _, next_offset, _, data_back_cb = data.split()
-    list_info = get_rclone_data("list_info", user_id)
-    total = len(list_info)
+    
+    info = get_rclone_data("info", user_id)
+    total = len(info)
     next_offset = int(next_offset)
     prev_offset = next_offset - 10 
 
     buttons = ButtonMaker()
     buttons.cb_buildbutton("✅ Select this folder", f"{Menus.MIRROR_SELECT}^close^{user_id}")
 
-    next_list_info, _next_offset= rcloneListNextPage(list_info, next_offset) 
+    next_info, _next_offset= await run_sync(rcloneListNextPage, info, next_offset) 
     
-    rcloneListButtonMaker(info= next_list_info, 
-        buttons= buttons,
+    await run_sync(rcloneListButtonMaker,
+        info= next_info, 
+        button= buttons,
         menu_type= Menus.MIRROR_SELECT,
         dir_callback = "remote_dir",
         file_callback= "",
@@ -115,5 +118,5 @@ async def next_page_mirrorsel(_, callback_query):
  
  
 bot.add_handler(MessageHandler(handle_mirrorselect, filters= filters.command(BotCommands.MirrorSelectCommand) & (CustomFilters.user_filter | CustomFilters.chat_filter)))
-bot.add_handler(CallbackQueryHandler(next_page_mirrorsel, filters= regex("next_ms")))
-bot.add_handler(CallbackQueryHandler(mirrorsel_callback, filters= regex("mirrorselectmenu")))
+bot.add_handler(CallbackQueryHandler(next_page_mirrorselect, filters= regex("next_ms")))
+bot.add_handler(CallbackQueryHandler(mirrorselect_callback, filters= regex("mirrorselectmenu")))

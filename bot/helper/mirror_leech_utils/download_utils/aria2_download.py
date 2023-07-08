@@ -22,14 +22,14 @@ async def add_aria2c_download(link, path, listener, filename, auth):
         download = (await run_sync(aria2.add, link, a2c_opt))[0]
     except Exception as e:
         LOGGER.info(f"Aria2c Download Error: {e}")
-        await sendMessage(listener.message, f'{e}')
+        await sendMessage(f'{e}', listener.message)
         return
     if ospath.exists(link):
         osremove(link)
     if download.error_message:
         error = str(download.error_message).replace('<', ' ').replace('>', ' ')
         LOGGER.info(f"Aria2c Download Error: {error}")
-        await sendMessage(listener.message, error)
+        await sendMessage(error, listener.message)
         return
 
     gid = download.gid
@@ -140,7 +140,7 @@ async def __onDownloadError(api, gid):
 
 
 def start_aria2_listener():
-    aria2.listen_to_notifications(threaded=True,
+    aria2.listen_to_notifications(threaded=False,
                                   on_download_start=__onDownloadStarted,
                                   on_download_error=__onDownloadError,
                                   on_download_stop=__onDownloadStopped,
